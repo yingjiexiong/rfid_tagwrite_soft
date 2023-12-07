@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="stylesheet" href="styles.css" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>tag product tool</title>
+    <script type="module" src="/main.js" defer></script>
+ 
+  </head>
+
+  <body class="column" >
+    <div class="container">
+        <div class="line-2"></div>
+        <div class="epc" >连接串口</div>
+        <div class="horizontalContainer">
+          <select name="COM" id="uart_com" class="com_select">
+            <option value="select_com">SELECT COM</option>
+            <option value="select_com">COM1</option>
+            <option value="select_com">COM2</option>
+            <option value="select_com">COM3</option>
+            <option value="select_com">COM4</option>
+            <option value="select_com">COM5</option>
+            <option value="select_com">COM6</option>
+            <option value="select_com">COM7</option>
+            <option value="select_com">COM8</option>
+          </select>
+          <button type="button" id="ConnectButton" class="button2" onclick="connectuart('connect')">CONNECT</button>
+          <button type="button" id="DisconnectButton" class="button2" onclick="connectuart('disconnect')" style="display: none;">DISCONT</button>
+        </div>
+        <div class="line-2" ></div>
+        <div class="epc" >匹配端口</div>
+        <div class="horizontalContainer" style="padding-top: 14px;">
+          <button type="button" id="startinvButton" class="button" onclick="startinv('start')">开始盘存</button>
+          <button type="button" id="stopinvButton" class="button" onclick="startinv('stop')" style="display: none;">停止盘存</button>
+          <button type="button" id="openButton" class="button" onclick="startrun('start')">开始匹配</button>
+          <button type="button" id="closeButton" class="button" onclick="startrun('stop')" style="display: none;">停止匹配</button>
+          <input  id="writenumber_txt" class="writenumber" type = "number" min="0" value="0" ></input> 
+        </div>
+        <div class="horizontalContainer">
+          <div class="verticalContainer" style="padding-left: 10px;">
+            <table id="epc_table">
+              <thead>
+                <tr>
+                  <th>序号</th>
+                  <th>端口</th>
+                  <th>光纤</th>
+                </tr>
+              </thead>
+              <tbody>
+                <!-- <tr>
+                  <td>0</td>
+                  <td>E1000102030405060708090A</td>
+                  <td>-</td>
+                </tr>
+                <tr>
+                  <td>1</td>
+                  <td>E1000102030405060708090B</td>
+                  <td>E2000102030405060708090B</td>
+                </tr>
+                <tr>
+                  <td>2</td>
+                  <td>E1000102030405060708090C</td>
+                  <td>-</td>
+                </tr>
+                <tr>
+                  <td>3</td>
+                  <td>E1000102030405060708090D</td>
+                  <td>E2000102030405060708090D</td>
+                </tr> -->
+              </tbody>
+            </table>
+          </div>
+        </div>
+        <div id="outputBox" readonly class="log">wait to start</div> 
+
+</html>
+

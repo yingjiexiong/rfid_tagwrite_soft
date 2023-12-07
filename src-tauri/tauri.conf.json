@@ -1,0 +1,47 @@
+{
+  "build": {
+    "beforeDevCommand": "",
+    "beforeBuildCommand": "",
+    "devPath": "../src",
+    "distDir": "../src",
+    "withGlobalTauri": true
+  },
+  "package": {
+    "productName": "rfid_project",
+    "version": "0.0.0"
+  },
+  "tauri": {
+    "allowlist": {
+      "all": false,
+      "shell": {
+        "all": false,
+        "open": true
+      }
+
+    },
+    "bundle": {
+      "active": true,
+      "targets": "all",
+      "identifier": "ucchip.com",
+      "icon": [
+        "icons/32.png",
+        "icons/128.png",
+        "icons/128@2.png",
+        "icons/icon.icns",
+        "icons/128.ico"
+      ]
+    },
+    "security": {
+      "csp": null
+    },
+    "windows": [
+      {
+        "fullscreen": false,
+        "resizable": false,
+        "title": "rfid_project",
+        "width": 490,
+        "height": 800
+      }
+    ]
+  }
+}
