@@ -24,6 +24,11 @@ let invstate;
 
 let connectuartstate;
 
+let modeflag;
+let coutlist;
+let couter;
+let match_suc_flag;
+
 window.onunload = () =>{
   let uiState = {
     uartsel_his  : comselection.selectedIndex,
@@ -57,8 +62,43 @@ window.addEventListener("DOMContentLoaded", async () => {
     enableNextUI();
   });
 
-  await appwindow.listen('enableUi',(_event)=>{
-    enableUI();
+  await appwindow.listen('repeate',async (_event)=>{
+
+  });
+
+  await appwindow.listen('enableUi',async (_event)=>{
+  enableUI();
+  
+  var d = new Date();
+  var minute = d.getMinutes();
+  var second = d.getSeconds();
+  var milisec = d.getMilliseconds();
+  var time = minute + ":" + second+ ":"+milisec;
+  output(time);
+
+    if(modeflag == false){
+
+      modeflag = true;
+
+      if(coutlist >= 1){
+          modeflag = false;
+          startstate = true;
+          startrun_state(startstate);
+          let allTables = document.getElementById("epc_table");
+          let epc = allTables.rows[couter].cells[1].innerText;
+          // E2 00 02 EE 03 CB 01 01 01 02 03 04 05 06 07 08 09 0A 0B 0C 0D 0E 0F 10 11 12 13 14 15 16
+          await tauri.invoke('start_match_epc',{epc:epc
+                                              });       
+          if (match_suc_flag == true){
+            match_suc_flag = false;
+            coutlist = coutlist - 1;
+            couter = couter + 1;
+          }
+      }
+
+
+    }
+
   });
 
   await appwindow.listen('getinvEPC',(event)=>{
@@ -66,9 +106,16 @@ window.addEventListener("DOMContentLoaded", async () => {
   });
 
   await appwindow.listen('setMatchEPC',(event)=>{
+    
+    if(modeflag == true){
+      let len = matchnum.value;
+      add_match_epc(len,event.payload.message);
+    }
+    else{
 
-    let len = matchnum.value;
-    add_match_epc(len,event.payload.message);
+      add_match_epc(couter,event.payload.message);
+
+    }
 
   });
 
@@ -196,10 +243,21 @@ let connect_state = (state) => {
 }
 
 let startrun = async(button)=>{
+
+  var d = new Date();
+  var minute = d.getMinutes();
+  var second = d.getSeconds();
+  var milisec = d.getMilliseconds();
+  var time = minute + ":" + second+ ":"+milisec;
+  output(time);
+  match_suc_flag = false;
+
   if(button == 'start'){
      
     let len = matchnum.value;
     if(len > 0){
+      modeflag = true;
+      output("单个匹配模式");
       let allTables = document.getElementById("epc_table");
       let num = allTables.rows.length;
       if(num > 1){
@@ -223,12 +281,32 @@ let startrun = async(button)=>{
       }
     }
     else{
-        output("匹配端口不能为0");
+      // 遍历模式
+      output("遍历模式");
+      let allTables = document.getElementById("epc_table");
+      let num = allTables.rows.length;
+      if(num > 1){
+          coutlist = num - 1;
+          modeflag = false;
+          startstate = true;
+          startrun_state(startstate);
+          couter = 1;
+          let epc = allTables.rows[1].cells[1].innerText;
+          // E2 00 02 EE 03 CB 01 01 01 02 03 04 05 06 07 08 09 0A 0B 0C 0D 0E 0F 10 11 12 13 14 15 16
+          await tauri.invoke('start_match_epc',{epc:epc
+                                              });
+
+      }
+      else{
+        output("请先盘存端口号再匹配");
+      }
+        // output("匹配端口不能为0");
     }
 
 
   }
   else{
+    modeflag = true;
     startstate = false;
     startrun_state(startstate);
     await tauri.invoke('stop_match');
@@ -236,6 +314,7 @@ let startrun = async(button)=>{
 }
 
 let startinv = async(button)=>{
+  modeflag = true;
   if(button == 'start'){
     invstate =true;
     startinv_state(invstate);
@@ -340,8 +419,20 @@ let add_port_epc=(epc)=>{
 
 let add_match_epc=(num,epc)=>{
   let allTables = document.getElementById("epc_table");
-  // let num = allTables.rows.length;
-  allTables.rows[num].cells[2].innerText = epc;
+
+  let num1 = allTables.rows.length;
+  let flag = "false";
+  for(var i = 0;i < num1;i++){
+       let value = allTables.rows[i].cells[2].innerText;
+       if(value == epc){
+        flag = "true";
+       }
+  }
+
+  if(flag == "false"){
+    allTables.rows[num].cells[2].innerText = epc;
+    match_suc_flag = true;
+  }
 
 }
 

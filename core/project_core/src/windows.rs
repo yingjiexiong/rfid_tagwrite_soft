@@ -3,11 +3,77 @@
 use calamine::{open_workbook, Error, Xlsx, Reader};
 
 
-use std::collections::VecDeque;
+use std::{collections::VecDeque, ptr::addr_of_mut};
 
 use serial::SerialPort;
 
 use crate::UI;
+
+// struct Protocol<S:SerialPort>{
+//     openport:S,
+//     cmd:Command,
+//     data_que:VecDeque<u8>,
+//     pack_len:u8
+// }
+
+pub enum Command {
+  CmdReset,
+  CmdSetPower,
+  CmdSetFreq,
+  CmdSetCw,
+  Cmd6CRead,
+  Cmd6CWrite,
+  CmdCustomInv,
+  Eos,
+}
+
+
+// impl<S:SerialPort> Protocol<S> {
+//   pub fn new(openport:S)->Self{
+//     Protocol { 
+//               openport,
+//               cmd: Command::Eos, 
+//               data_que: VecDeque::new(),
+//               pack_len:0,
+//             }
+//   }
+
+//   fn checksun(&mut self,data:Vec<u8>)->u8{
+
+//     let mut checksun:u8 = 0;
+//     for d in data{
+//       checksun = checksun.wrapping_add(d);
+//     }
+//     checksun = (!checksun ) + 1 ;
+
+//     checksun
+//   }
+    
+//   fn send_protocol_data(&mut self,cmd:u8,len:u8,mut data:Vec<u8>)->bool{
+
+//     let mut buf:Vec<u8> = vec![0xA0,0x03+len,0x00];
+
+//     buf.insert(3, cmd);
+
+//     buf.append(&mut data);
+
+//     let checksun = self.checksun(buf.clone());
+//     buf.insert((len +4).into(), checksun);
+
+
+//     let write = self.openport.write(&buf[..]);
+
+//     if write.is_ok(){
+//       return true;
+//     }
+//     else {
+//       return false;
+//     }
+//   }   
+
+
+
+// }
 
 
 
@@ -75,6 +141,28 @@ pub fn send_getpower_command<Q:SerialPort>(openport:&mut Q)->bool{
 
 }
 
+
+fn transform_u32_to_array_of_u8(x:u32) -> Vec<u8>{
+    let b1 : u8 = ((x >> 24) & 0xff) as u8;
+    let b2 : u8 = ((x >> 16) & 0xff) as u8;
+    let b3 : u8 = ((x >> 8) & 0xff) as u8;
+    let b4 : u8 = (x & 0xff) as u8;
+    return vec![b1,b2,b3,b4]
+}
+
+pub fn send_setcustomfreq_command<Q:SerialPort>(openport:&mut Q,freq:u32)->bool{
+
+  
+  let mut temp = transform_u32_to_array_of_u8(freq);
+  temp.remove(0);
+  let mut buf:Vec<u8> = vec![0x04,0x00,0x19,0x01];
+  buf.append(&mut temp);
+  let state = send_protocol_data(openport, 0x78,buf.len() as u8, buf);
+  state
+
+}
+
+
 pub fn send_setstandardfreq_command<Q:SerialPort>(openport:&mut Q,standard:u8,start:u8,end:u8)->bool{
 
   let buf:Vec<u8> = vec![standard,start,end];
@@ -118,7 +206,7 @@ pub fn send_realtimeinv_command<Q:SerialPort>(openport:&mut Q)->bool{
 pub fn send_opencw_command<Q:SerialPort>(openport:&mut Q)->bool{
 
   let buf:Vec<u8> = vec![0x01];
-  let state = send_protocol_data(openport, 0x5E,1, buf);
+  let state = send_protocol_data(openport, 0x3E,1, buf);
   state
 
 }
@@ -159,8 +247,10 @@ pub fn send_custom_inventory_command<Q:SerialPort>(openport:&mut Q,round:u8,mode
   state
 }
 
-pub fn send_set_select_command<Q:SerialPort>(openport:&mut Q)->bool{
-  let buf:Vec<u8> = vec![0x01,0x51,0x00,0x00,0x00,0x00,0x10,0x01,0xFF,0xFF];
+pub fn send_set_select_command<Q:SerialPort>(openport:&mut Q,mut epc:Vec<u8>)->bool{
+  let len = (epc.len() * 8) as u8;
+  let mut buf:Vec<u8> = vec![0x01,0x41,0x00,0x00,0x00,0x20,len,0x01];
+  buf.append(&mut epc);  
   let state = send_protocol_data(openport, 0x8D,buf.len() as u8, buf);
   state
 }
@@ -181,15 +271,15 @@ pub trait BufFunc {
 }
 
 pub struct Buf{
-  // pub pack:Vec<[u8;50]>,
   pub data_que:VecDeque<u8>,
+  pub pack:Vec<u8>,
   pub pack_len:u8
 }
 
 
 impl BufFunc for Buf {
   fn new(&mut self){
-    // self.pack = Vec::new();
+    self.pack = Vec::new();
     self.data_que = VecDeque::new();
     self.pack_len = 0;
    }
@@ -197,103 +287,99 @@ impl BufFunc for Buf {
   fn get_single_pack<T:UI>(&mut self,ui:&T)->Result<Vec<u8>,()>{
 
     let mut data_vec:Vec<u8> = Vec::new();
-    let mut data:Vec<u8> = Vec::new();
 
-      let temp = self.data_que.pop_front();
-
-      if self.data_que.len() < 6{
-        return Err(());
-      }
-
-      if temp == None{
-        return Err(());
-      }
-
-      if temp ==Some(0xA0){
-        data.clear();
-        // let len = data_que[0];
-        data.push(temp.unwrap());
-        let a = self.data_que.pop_front(); 
-        if a == None{
-          return Err(());
-        }
-        data.push(a.unwrap());
-        let mut len = data[1] - 1;
-        loop {
-
-          let a = self.data_que.pop_front();
-          if a == None{
-            break;
-          }
-
-          data.push(a.unwrap());
-
-          if len == 0{
-            break;
-          }
-          else {
-              len -= 1;
-          }
-
-        }
-        
-        // let t:String = data
+        // let t:String = self.data_que
         // .clone()
         // .iter()
         // .map(|x| convert_to_hex(*x))
         // .collect();
-        // ui.output(&t);
+        // ui.output(&("first:".to_owned()+&t));
 
-        if data[0] == 0xA0{
-            let check = data.pop().unwrap();
-            let temp = data.clone();
+      let temp = self.data_que.pop_front();
+      if temp == Some(0xA0){
+        self.pack.clear();
+        self.pack.push(temp.unwrap());
+        let a = self.data_que.pop_front();
+        if a == None{
+          return Err(());
+        }
+        self.pack.push(a.unwrap());
+      }
+      else {
+        if temp == None{
+          return Err(());
+        }         
+        self.pack.push(temp.unwrap());
+      }
+
+
+      let len = self.pack[1] + 2;
+      if len > self.pack.len() as u8{
+        loop {
+          let a = self.data_que.pop_front();
+          if a == None{
+            break;
+          }
+          self.pack.push(a.unwrap());
+
+          if len == self.pack.len() as u8{
+            break;
+          }
+        }
+      }
+      // let t:String = self.pack
+      // .clone()
+      // .iter()
+      // .map(|x| convert_to_hex(*x))
+      // .collect();
+      // ui.output(&t);
+
+      if self.pack.len() - 2 < self.pack[1].into(){
+        return Err(());
+      }
+
+        if self.pack[0] == 0xA0{
+            let check = self.pack.pop().unwrap();
+            let temp = self.pack.clone();
             if check == 0x00{
               return Err(());
             }
             let sum = checksun(temp);
             if check == sum{
-              let cmd = data[3];
+              let cmd = self.pack[3];
               if cmd == 0x89{
-                if data[1] == 0x4{
-                  if data[4] != 0x10{
-                    ui.output("没有读到标签");
-                  }
+                if self.pack[1] == 0x4{
+                  self.pack.clear();
                   return Err(());
                 }
                 else {
-                  if data[7] != 0xE2{
-                    let len = (data[5] >> 3) * 2; 
+                    let len = (self.pack[5] >> 3) * 2; 
                     for i in 0..len{
-                      data_vec.push(data[(i + 7) as usize]);
+                      data_vec.push(self.pack[(i + 7) as usize]);
                     }
-                  } 
-                  else {
-                      return Err(());
-                  }
+
                 }
               }
               else if cmd == 0x59{
-                if data[1] == 0x4{
-                  // if data[4] != 0x10{
-                  //   ui.output("没有读到标签");
-                  // }
-                  // return Err(());
-                  data_vec.push(data[4]);
+                if self.pack[1] == 0x4{
+                  data_vec.push(self.pack[4]);
                 }
                 else {
-                  let len = (data[5] >> 3) * 2; 
-                  data_vec.push(len);
-                  for i in 0..len{
-                    data_vec.push(data[(i + 7) as usize]);
-                  }
-                  data_vec.push(data[(len + 9) as usize]);
-                  data_vec.push(data[(len + 10) as usize]);
-                  data_vec.push(data[(len + 11) as usize]);
+
+                    let len = (self.pack[5] >> 3) * 2; 
+                    data_vec.push(len);
+                    for i in 0..len{
+                      data_vec.push(self.pack[(i + 7) as usize]);
+                    }
+                    data_vec.push(self.pack[(len + 9) as usize]);
+                    data_vec.push(self.pack[(len + 10) as usize]);
+                    data_vec.push(self.pack[(len + 11) as usize]);
+
                 }
               }
               else if cmd == 0x8A {
-                 if data[1] == 0x4{
-                  if data[4] != 0x10{
+                 if self.pack[1] == 0x4{
+                  if self.pack[4] != 0x10{
                     ui.output("没有读到标签");
                   }
                   return Err(());
@@ -313,12 +399,6 @@ impl BufFunc for Buf {
             ui.output("协议头错误");
             return Err(());
         }
-
-      }
-      else {
-          ui.output("没有读到标签");
-          return Err(());
-      }
 
       Ok(data_vec)
       
@@ -434,7 +514,7 @@ pub fn decode_protocol_data<Q:SerialPort>(openport:&mut Q)->Result<Vec<u8>,()>{
               else if cmd == 0x5B {
                 data_vec.push(data[4]);
               }
-              else if cmd ==  0x5E{
+              else if cmd ==  0x3E{
                 data_vec.push(data[4]);
               }
               else if cmd == 0x85{

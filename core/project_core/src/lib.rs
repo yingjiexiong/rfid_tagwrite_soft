@@ -3,7 +3,7 @@ extern crate serial;
 #[cfg(windows)]
 pub mod windows;
 
-use windows::{send_reset_command, send_getpower_command, send_getrflink_command, send_setrflink_command, send_setpower_command, send_getstandardfreq_command, send_setstandardfreq_command, send_stopinv_command,  decode_protocol_data,  send_realtimeinv_command, convert_to_hex, Buf, BufFunc, send_opencw_command, send_match_epc_command, send_single_read_command, send_custom_inventory_command, send_set_session_command, send_set_select_command};
+use windows::{send_reset_command, send_getpower_command, send_getrflink_command, send_setrflink_command, send_setpower_command, send_getstandardfreq_command, send_setstandardfreq_command, send_stopinv_command,  decode_protocol_data,  send_realtimeinv_command, convert_to_hex, Buf, BufFunc, send_opencw_command, send_match_epc_command, send_single_read_command, send_custom_inventory_command, send_set_session_command, send_set_select_command, send_setcustomfreq_command};
 
 use std::{ sync::{Mutex, Arc}, collections::VecDeque, vec};
 use serial::SerialPort;
@@ -37,6 +37,7 @@ pub trait UI: Clone + 'static{
   fn enable_ui(&self);
   fn get_inv_epc(&self,epc:&str);
   fn update_match_table(&self,epc:&str);
+  fn repeate(&self);
 }
 
 #[derive(Clone)]
@@ -82,12 +83,12 @@ pub async fn uartstate_moniter<T:UI ,Q:SerialPort>(
         ui.output("复位成功");
         ui.enable_next_ui();
 
-        let t:String = buf
-        .unwrap()
-        .iter()
-        .map(|x| convert_to_hex(*x))
-        .collect();
-        ui.output(&t);
+        // let t:String = buf
+        // .unwrap()
+        // .iter()
+        // .map(|x| convert_to_hex(*x))
+        // .collect();
+        // ui.output(&t);
   
       }
       else {
@@ -137,11 +138,17 @@ sta:Arc<Mutex<Option<bool>>>
 
   ui.output("连接成功");
 
-  let state = reader_base_config(ui,openport);
-  if state == CompleteState::Error(1){
-    fault_state(ui);
-    return CompleteState::Error(1);
-  }
+  // let state = reader_base_config(ui,openport);
+  // if state == CompleteState::Error(1){
+  //   fault_state(ui);
+  //   return CompleteState::Error(1);
+  // }
+
+  // let state = jump_freq(ui, openport, 0, 1);
+  // if state == false{
+  //   fault_state(ui);
+  //   return CompleteState::Error(1);
+  // }
 
   let state = send_realtimeinv_command(openport);
   ui.output("发送实时盘存命令");
@@ -150,13 +157,14 @@ sta:Arc<Mutex<Option<bool>>>
       return CompleteState::Error(1);
   }
   let data_temp:VecDeque<u8> = VecDeque::new();
+  let pack:Vec<u8> = Vec::new();
   let pack_len_temp:u8 = 0;
 
-  let mut inv_epc = Buf{ data_que: data_temp, pack_len: pack_len_temp };
+  let mut inv_epc = Buf{ data_que: data_temp,pack, pack_len: pack_len_temp };
   loop {
       let buf = inv_epc.decode_inv_epc_data(openport);
        if buf == false{
-
+        
       }
       loop {
           
@@ -177,13 +185,18 @@ sta:Arc<Mutex<Option<bool>>>
       let mut handle_value = sta.lock().expect("Couldn't lock hotspot mutex");
       let t = *handle_value;
       if t == Some(true){
-        *handle_value = None;
+        *handle_value = Some(false);
 
-        let state = send_stopinv_command(openport);
-        ui.output("发送停止盘存命令");
-        if state == false{
-            ui.output("发送停止盘存命令失败");
-        }
+      let state = send_reset_command(openport);
+      if state == true{
+        ui.output("发送复位命令成功");
+      }
+        // let temp = inv_epc.get_single_pack(ui);
+        // if temp.is_ok(){
+        // ui.output("复位成功");
+        // ui.enable_next_ui();
+        // }
+
         complete_state(ui);
         break;
       }
@@ -216,7 +229,7 @@ pub async fn start_match<T:UI,Q:SerialPort>(
     return CompleteState::Error(1);
   }
   let epc_u8_orange = epc_op.unwrap();
-
+  // let epc_list = epc_u8_orange.clone();
 
   tokio::task::yield_now().await;
 
@@ -230,87 +243,53 @@ pub async fn start_match<T:UI,Q:SerialPort>(
 
   ui.output("连接成功");
 
-  let state = reader_base_config(ui,openport);
-  if state == CompleteState::Error(1){
-    fault_state(ui);
-    return CompleteState::Error(1);
-  }
+
+  // let state = jump_freq(ui, openport, 910000, 0);
+  // if state == false{
+  //   fault_state(ui);
+  //   return CompleteState::Error(1);
+  // }
 
 
-
-  let state = send_match_epc_command(openport,0x00, epc_u8_orange);
-  ui.output("匹配端口EPC");
+  let state = send_set_select_command(openport,epc_u8_orange);
+  ui.output("设置select");
   if state == false{
-    ui.output("匹配端口EPC失败");
+    ui.output("设置select失败");
     fault_state(ui);
     return  CompleteState::Error(1);
   }
 
   let buf = decode_protocol_data(openport);
   if buf.is_err(){
-    ui.output("匹配端口EPC失败");
+    ui.output("设置select失败");
     fault_state(ui);
     return CompleteState::Error(1);
   }
+
+
   
-
-  let addr:Vec<u8> = vec![0x00,0x00,0x00,0x04];
-  let membank:u8 = 0x00;
-  let wordcount:Vec<u8> = vec![0x00,0x01];
-  let password:Vec<u8> = vec![0x00,0x00,0x00,0x00];
-  let state = send_single_read_command(openport, addr, membank, wordcount, password);
-  ui.output("打开端口匹配模式");
-  if state == false{
-    ui.output("打开端口匹配模式失败");
-    fault_state(ui);
-    return  CompleteState::Error(1);
-  }
-
-  let buf = decode_protocol_data(openport);
-  if buf.is_err(){
-    ui.output("打开端口匹配模式失败");
-    fault_state(ui);
-    return CompleteState::Error(1);
-  }
-  
-
-  let temp:Vec<u8> = vec![0];
-  let state = send_match_epc_command(openport, 0x01, temp);
-  ui.output("清除EPC匹配");
-  if state == false{
-    ui.output("清除EPC匹配失败");
-    fault_state(ui);
-    return  CompleteState::Error(1);
-  }
-
-  let buf = decode_protocol_data(openport);
-  if buf.is_err(){
-    ui.output("清除EPC匹配失败");
-    fault_state(ui);
-    return CompleteState::Error(1);
-  }
-  
-  let round:u8 = 255;
+  let round:u8 = 0x2;
   let mode:u8 = 0x0A;
   let len:u8 = 1;
   let state = send_custom_inventory_command(openport, round, mode, len);
   ui.output("发送匹配端口命令");
   if state == false{
-    ui.output("清除EPC匹配失败");
+    ui.output("发送端口匹配失败");
     fault_state(ui);
     return  CompleteState::Error(1);
   }
   
   let data_temp:VecDeque<u8> = VecDeque::new();
+  let pack:Vec<u8>= Vec::new();
   let pack_len_temp:u8 = 0;
 
-  let mut inv_epc = Buf{ data_que: data_temp, pack_len: pack_len_temp };
+  let mut inv_epc = Buf{ data_que: data_temp, pack :pack, pack_len: pack_len_temp };
 
   loop {
       
       let buf = inv_epc.decode_inv_epc_data(openport);
        if buf == false{
-
+        // break;
       }
       loop {
           
@@ -321,28 +300,34 @@ pub async fn start_match<T:UI,Q:SerialPort>(
             let len = value[0];
             let value1 = value.pop();
             let value2 = value.pop();
-            if value1 == Some(0x02) && value2 == Some(0x02){
+            if value1 == Some(0x00) && value2 == Some(0x00){
               let mut epc:Vec<u8> = Vec::new();
               for i in 1..len{
                 epc.push(value[i as usize]);
               }
-              let t:String = epc
-                .iter()
-                .map(|x| convert_to_hex(*x))
-                .collect();
-                ui.update_match_table(&t);
+                let t:String = epc
+                  .iter()
+                  .map(|x| convert_to_hex(*x))
+                  .collect();
+                  ui.update_match_table(&t);
 
-                let state = send_stopinv_command(openport);
-                ui.output("发送停止盘存命令");
-                if state == false{
-                    ui.output("发送停止盘存命令失败");
-                }
-                complete_state(ui);               
-                return CompleteState::Complete(1);
+                  // let state = send_stopinv_command(openport);
+                  // ui.output("发送停止盘存命令");
+                  // if state == false{
+                  //     ui.output("发送停止盘存命令失败");
+                  // }
+                  // ui.repeate();
+                  // complete_state(ui);               
+                  // return CompleteState::Complete(1);
             }
-
-
           }
+          else {
+              if value[0] == 0x12{
+                  complete_state(ui);               
+                  return CompleteState::Complete(1);
+              }
+          }
+
           
           // let t:String = temp
           //   .unwrap()
@@ -359,7 +344,7 @@ pub async fn start_match<T:UI,Q:SerialPort>(
       let mut handle_value = sta.lock().expect("Couldn't lock hotspot mutex");
       let t = *handle_value;
       if t == Some(true){
-        *handle_value = None;
+        *handle_value = Some(false);
 
         let state = send_stopinv_command(openport);
         ui.output("发送停止盘存命令");
@@ -371,14 +356,6 @@ pub async fn start_match<T:UI,Q:SerialPort>(
       }
 
   }
-
-  let temp:Vec<u8> = vec![0xE2,0x00,0x01,0x02,0x03,0x04,0x05,0x06,0x07,0x08,0x09,0x0A];
-  let t:String = temp
-  .iter()
-  .map(|x| convert_to_hex(*x))
-  .collect();
-  ui.update_match_table(&t); 
-
   complete_state(ui);
   CompleteState::Complete(1)
 }
@@ -470,7 +447,7 @@ fn reader_base_config<T:UI,Q:SerialPort>(ui:&T,openport:&mut Q)->CompleteState {
  
   let power = buf.unwrap();
   if power[0] != 20{
-    let state = send_setpower_command(openport, 20);
+    let state = send_setpower_command(openport, 18);
     ui.output("设置当前功率");
     if state == false{
       ui.output("发送设置功率命令失败");
@@ -485,54 +462,6 @@ fn reader_base_config<T:UI,Q:SerialPort>(ui:&T,openport:&mut Q)->CompleteState {
       return CompleteState::Error(1);
     }
   }
-
-  let state = send_getstandardfreq_command(openport);
-  ui.output("获取当前频率");
-  if state == false{
-
-    ui.output("发送获取当前频率命令失败");
-      // fault_state(ui);
-      return CompleteState::Error(1);
- 
-  }
-
-  let buf = decode_protocol_data(openport);
-  if buf.is_err(){
-
-    ui.output("获取当前频率失败");
-      // fault_state(ui);
-      return CompleteState::Error(1);
- 
-  }
-
- 
-  // let t:String = buf
-  // .unwrap()
-  // .iter()
-  // .map(|x| convert_to_hex(*x))
-  // .collect();
-  // ui.output(&t);
- 
-  let freq = buf.unwrap();
-  if freq[0] != 1 || freq[1] != 0x07  || freq[2] != 0x3B {
-    let state = send_setstandardfreq_command(openport, 0x01, 0x07, 0x3B);
-    ui.output("设置频率");
-    if state ==false{
-
-      ui.output("发送设置当前频率命令失败");
-      // fault_state(ui);
-      return CompleteState::Error(1);
- 
-    }
-
-    let buf = decode_protocol_data(openport);
-    if buf.is_err(){
-      ui.output("设置当前频率失败");
-      // fault_state(ui);
-      return CompleteState::Error(1);
-    }
-  }
-
 
   let state = send_opencw_command(openport);
   ui.output("打开CW波");
@@ -564,20 +493,20 @@ fn reader_base_config<T:UI,Q:SerialPort>(ui:&T,openport:&mut Q)->CompleteState {
     return CompleteState::Error(1);
   }
 
-  let state = send_set_select_command(openport);
-  ui.output("设置select");
-  if state == false{
-    ui.output("设置select失败");
-    // fault_state(ui);
-    return  CompleteState::Error(1);
-  }
+  // let state = send_set_select_command(openport);
+  // ui.output("设置select");
+  // if state == false{
+  //   ui.output("设置select失败");
+  //   // fault_state(ui);
+  //   return  CompleteState::Error(1);
+  // }
 
-  let buf = decode_protocol_data(openport);
-  if buf.is_err(){
-    ui.output("设置select失败");
-    // fault_state(ui);
-    return CompleteState::Error(1);
-  }
+  // let buf = decode_protocol_data(openport);
+  // if buf.is_err(){
+  //   ui.output("设置select失败");
+  //   // fault_state(ui);
+  //   return CompleteState::Error(1);
+  // }
 
   
 
@@ -585,13 +514,50 @@ fn reader_base_config<T:UI,Q:SerialPort>(ui:&T,openport:&mut Q)->CompleteState {
 }
 
 
+fn jump_freq<T:UI,Q:SerialPort>(ui:&T,openport:&mut Q,freq:u32,mode:u8)->bool{
+
+  if mode == 0x00{
+    let state = send_setcustomfreq_command(openport, freq); 
+    ui.output("设置固定频点");
+    if state == false{
+      ui.output("发送设置当前频率命令失败");
+      // fault_state(ui);
+      return false;
+    }
+  }
+  else {
+      
+    let state = send_setstandardfreq_command(openport, 0x01, 0x07, 0x3B);
+    ui.output("设置标准频率");
+    if state ==false{
+
+      ui.output("发送设置当前频率命令失败");
+      // fault_state(ui);
+      return false;
+    }
+
+  }
+
+    let buf = decode_protocol_data(openport);
+    if buf.is_err(){
+      ui.output("设置当前频率失败");
+      // fault_state(ui);
+      return false;
+    }
+
+    return true
+
+
+  
+}
+
 fn fault_state<T:UI>(ui:&T){
-  std::thread::sleep(std::time::Duration::from_secs(1));
+  // std::thread::sleep(std::time::Duration::from_secs(1));
   ui.enable_ui();
 }
 
 fn complete_state<T:UI>(ui:&T){
-  std::thread::sleep(std::time::Duration::from_secs(1));
+  // std::thread::sleep(std::time::Duration::from_secs(1));
   ui.enable_ui();
 }
 

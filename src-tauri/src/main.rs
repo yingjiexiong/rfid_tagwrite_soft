@@ -57,6 +57,14 @@ impl UI for GUI{
             .emit("enableUi", Progress{value:0})
             .expect("coundn't not emit event");
     }
+    fn repeate(&self){
+        self.window
+            .lock()
+            .expect("coundn't lock GUI mutex")
+            .emit("enableUi", Progress{value:0})
+            .expect("coundn't not emit event");
+    }
+
     fn get_inv_epc(&self,epc:&str){
       self.window
           .lock()
